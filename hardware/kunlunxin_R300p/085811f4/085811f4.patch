@@ -1,22 +1,31 @@
-From bc46646d6be6670502042f55b7bd73e42717c7c6 Mon Sep 17 00:00:00 2001
+From 2011936a5b3957e046e9bdd5755207670fb6f6ec Mon Sep 17 00:00:00 2001
 From: zhangsanfeng2022 <ludehui2022@163.com>
-Date: Thu, 17 Oct 2024 16:07:21 +0800
-Subject: [PATCH] [kunlunxin] llava 1.5 7b patch for checkpoint save.
+Date: Thu, 17 Oct 2024 21:31:08 +0800
+Subject: [PATCH] fix.
 
 ---
- examples/llava/conf/config.yaml               | 26 ++++++++++++++++++-
- .../llava/conf/train/train_llava1.5_7b.yaml   |  6 +++--
- megatron/megatron/training/checkpointing.py   | 10 +++----
- 3 files changed, 34 insertions(+), 8 deletions(-)
+ examples/llava/conf/config.yaml               | 64 +++++++++++++------
+ .../llava/conf/train/train_llava1.5_7b.yaml   |  4 +-
+ megatron/megatron/training/checkpointing.py   |  9 ++-
+ 3 files changed, 51 insertions(+), 26 deletions(-)
 
 diff --git a/examples/llava/conf/config.yaml b/examples/llava/conf/config.yaml
-index e7b327ee..b73a8e5d 100644
+index e7b327ee..f1db89e8 100644
 --- a/examples/llava/conf/config.yaml
 +++ b/examples/llava/conf/config.yaml
-@@ -19,9 +19,33 @@ experiment:
-     CUDA_DEVICE_MAX_CONNECTIONS: 1
-     NVTE_APPLY_QK_LAYER_SCALING: 0
-     NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
+@@ -1,27 +1,51 @@
++action: run
+ defaults:
+-  - train: train_llava1.5_7b.yaml
+-  - _self_
+-
++- train: train_llava1.5_7b.yaml
++- _self_
+ experiment:
+-  exp_name: llava1.5
++  cmds:
++    before_start: ''
++  envs:
 +    ALLGATHER_ASYNC: false
 +    ALLREDUCE_ASYNC: false
 +    ALLREDUCE_FUSION: 0
@@ -36,20 +45,48 @@ index e7b327ee..b73a8e5d 100644
 +    BKCL_XLINK_D2D: 0
 +    BKCL_XLINK_ETH: 0
 +    CUDART_DUMMY_REGISTER: 1
++    CUDA_DEVICE_MAX_CONNECTIONS: 1
++    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
 +    FAST_SWIGLU_ENABLE: 1
++    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
++    NVTE_APPLY_QK_LAYER_SCALING: 0
 +    USE_FAST_BF16_FC: true
 +    USE_L3: 1
 +    XDNN_USE_FAST_SWISH: true
 +    XPU_ZEBU_MODE: 1
-
- action: run 
-
- hydra: 
+   exp_dir: ./outputs_llava1.5
+-  task:
+-    type: train
+-    backend: megatron
+-    entrypoint: ./flagscale/train/train_llava.py
++  exp_name: llava1.5
+   runner:
+     backend: torchrun
+-    nnodes: 4 
++    hostfile: xxx
++    nnodes: 4
+     nproc_per_node: 8
+-    hostfile: <xxx>
+-  envs:
+-    CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7 
+-    CUDA_DEVICE_MAX_CONNECTIONS: 1
+-    NVTE_APPLY_QK_LAYER_SCALING: 0
+-    NVTE_ALLOW_NONDETERMINISTIC_ALGO: 0
+-
+-action: run 
+-
+-hydra: 
++    ssh_port: 4323
++  task:
++    backend: megatron
++    entrypoint: ./flagscale/train/train_llava.py
++    type: train
++hydra:
    run:
 -    dir: ${experiment.exp_dir}/hydra 
 +    dir: ${experiment.exp_dir}/hydra
 diff --git a/examples/llava/conf/train/train_llava1.5_7b.yaml b/examples/llava/conf/train/train_llava1.5_7b.yaml
-index 040b73ca..6b400246 100644
+index 040b73ca..c1cfde55 100644
 --- a/examples/llava/conf/train/train_llava1.5_7b.yaml
 +++ b/examples/llava/conf/train/train_llava1.5_7b.yaml
 @@ -7,7 +7,9 @@ system:
@@ -63,17 +100,8 @@ index 040b73ca..6b400246 100644
      attention_softmax_in_fp32: True
    logging:
      log_interval: 1
-@@ -19,7 +21,7 @@ system:
-   checkpoint:
-     save_interval: 1000
-     pretrained_checkpoint: ${pretrained_checkpoint_path:??}
--    dataloader_save: ${experiment.exp_dir}/checkpoints/dataloader
-+    dataloader_save: /share/project/PUBLIC/checkpoints/dataloader
-     use_dist_ckpt: False
-     ckpt_format: torch
-     async_save: False
 diff --git a/megatron/megatron/training/checkpointing.py b/megatron/megatron/training/checkpointing.py
-index 01425f36..fcd72eb8 100644
+index 01425f36..459b76db 100644
 --- a/megatron/megatron/training/checkpointing.py
 +++ b/megatron/megatron/training/checkpointing.py
 @@ -231,7 +231,7 @@ def read_metadata(tracker_filename):
@@ -85,23 +113,17 @@ index 01425f36..fcd72eb8 100644
      # We should remove this after we have a better way to load checkpoint from other framework.
      assert iteration >= 0 or release, 'error parsing metadata file {}'.format(
          tracker_filename)
-@@ -530,13 +530,13 @@ def save_dataloader_state(train_iterator, iteration, dataloader_save_path):
-
+@@ -530,8 +530,7 @@ def save_dataloader_state(train_iterator, iteration, dataloader_save_path):
+ 
      torch.distributed.barrier(group=mpu.get_data_parallel_group())
-
+ 
 -    if mpu.get_data_parallel_rank() == 0:
 -        ensure_directory_exists(data_state_save_path)
 +    ensure_directory_exists(data_state_save_path)
-
+ 
      torch.distributed.barrier(group=mpu.get_data_parallel_group())
-
-     dataloader_save_dict = {}
-     dataloader_save_dict['dataloader_state_dict'] = train_dataloader_state_dict
-+
-     torch.save(dataloader_save_dict, data_state_save_path)
-
-
-@@ -1109,7 +1109,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
+ 
+@@ -1109,7 +1108,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
          if (args.fp16 or args.bf16) and optimizer is not None \
              and not args.finetune_with_optim:
              optimizer.reload_model_params()
@@ -110,14 +132,14 @@ index 01425f36..fcd72eb8 100644
      if args.finetune_with_optim:
          try:
              # Load state dict.
-@@ -1128,7 +1128,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
+@@ -1128,7 +1127,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
                          model_checkpoint_name)
                  optimizer.load_parameter_state(optim_checkpoint_name)
              # Reset iteration to 0 after loading optimizer
 -            # after making use of the iteration returned by read_metadata 
 +            # after making use of the iteration returned by read_metadata
              iteration = 0
-
+ 
          except KeyError:
 -- 
 2.47.0
