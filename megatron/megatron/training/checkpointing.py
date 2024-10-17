@@ -231,7 +231,7 @@ def read_metadata(tracker_filename):
                 print_rank_0('ERROR: Invalid metadata file {}. Exiting'.format(
                     tracker_filename))
                 sys.exit()
-    # TODO: we use iteration 0 to load checkpoint from other framework.  
+    # TODO: we use iteration 0 to load checkpoint from other framework.
     # We should remove this after we have a better way to load checkpoint from other framework.
     assert iteration >= 0 or release, 'error parsing metadata file {}'.format(
         tracker_filename)
@@ -530,13 +530,13 @@ def save_dataloader_state(train_iterator, iteration, dataloader_save_path):
 
     torch.distributed.barrier(group=mpu.get_data_parallel_group())
 
-    if mpu.get_data_parallel_rank() == 0:
-        ensure_directory_exists(data_state_save_path)
+    ensure_directory_exists(data_state_save_path)
 
     torch.distributed.barrier(group=mpu.get_data_parallel_group())
 
     dataloader_save_dict = {}
     dataloader_save_dict['dataloader_state_dict'] = train_dataloader_state_dict
+
     torch.save(dataloader_save_dict, data_state_save_path)
 
 
@@ -1109,7 +1109,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
         if (args.fp16 or args.bf16) and optimizer is not None \
             and not args.finetune_with_optim:
             optimizer.reload_model_params()
-    
+
     if args.finetune_with_optim:
         try:
             # Load state dict.
@@ -1128,7 +1128,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
                         model_checkpoint_name)
                 optimizer.load_parameter_state(optim_checkpoint_name)
             # Reset iteration to 0 after loading optimizer
-            # after making use of the iteration returned by read_metadata 
+            # after making use of the iteration returned by read_metadata
             iteration = 0
 
         except KeyError:
